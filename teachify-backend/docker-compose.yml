@@ -1,0 +1,76 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: teachify-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB_NAME=teachify
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - SPEECH_ENDPOINT=${SPEECH_ENDPOINT:-}
+      - SPEECH_KEY=${SPEECH_KEY:-}
+      - AVATAR_API_BASE=${AVATAR_API_BASE:-}
+      - AVATAR_API_KEY=${AVATAR_API_KEY:-}
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_REGION=${S3_REGION:-}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-}
+      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID:-}
+      - GOOGLE_CREDENTIALS=${GOOGLE_CREDENTIALS:-/app/service-account.json}
+      - APP_ENV=${APP_ENV:-production}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080,http://127.0.0.1:8080
+    # env_file removed to avoid loading invalid values from host .env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./static:/app/static:rw
+      - ./service-account.json:/app/service-account.json:ro
+    # Ensure static directory has proper permissions on host
+    # Run: sudo chown -R 1000:1000 ./static (if permission issues occur)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - teachify-network
+
+  mongo:
+    image: mongo:6
+    container_name: teachify-mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - teachify-network
+    # For production, consider adding authentication:
+    # environment:
+    #   - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-admin}
+    #   - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-changeme}
+
+volumes:
+  mongo-data:
+    driver: local
+
+networks:
+  teachify-network:
+    driver: bridge
