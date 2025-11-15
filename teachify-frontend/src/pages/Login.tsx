@@ -47,7 +47,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-md px-7 py-8 md:px-8 md:py-9 glass-panel">
+      <Card className="w-full max-w-md px-7 py-8 md:px-8 md:py-9 glass-panel animate-rise">
         {/* Logo + heading */}
         <div className="mb-8 text-center">
           <Link
@@ -72,6 +72,16 @@ const Login = () => {
           <p className="mt-1 text-sm text-muted-foreground">
             Sign in to your account to continue creating AI-powered lectures.
           </p>
+
+          {/* Small status pill (visual only) */}
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border/80 bg-background/80 px-3 py-1 text-[11px] text-muted-foreground shadow-sm">
+            <span
+              className={`inline-flex h-2 w-2 rounded-full ${
+                isLoading ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+              }`}
+            />
+            <span>{isLoading ? 'Signing you in...' : 'Secure login · JWT session'}</span>
+          </div>
         </div>
 
         {/* Form */}
@@ -110,7 +120,7 @@ const Login = () => {
         {/* Bottom helper text */}
         <div className="mt-6 text-center text-sm">
           <p className="text-muted-foreground">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link
               to="/signup"
               className="font-medium text-primary hover:text-primary/80 hover:underline"

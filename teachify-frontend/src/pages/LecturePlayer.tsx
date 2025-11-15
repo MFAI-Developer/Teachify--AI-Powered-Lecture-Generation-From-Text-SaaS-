@@ -72,6 +72,7 @@ export default function LecturePlayer() {
   const currentParagraphKeyRef = useRef<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const textContainerRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const lastWordCountRef = useRef<number>(-1);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -84,14 +85,42 @@ export default function LecturePlayer() {
   const compiledOnceRef = useRef<boolean>(false);
 
   // live refs used by canvas draw
-  const displayedTextRef = useRef<string>(''); useEffect(()=>{displayedTextRef.current=displayedText;},[displayedText]);
-  const currentSectionRef = useRef<SectionKey>('introduction'); useEffect(()=>{currentSectionRef.current=currentSection;},[currentSection]);
-  const activeVizRef = useRef<VisualizationPrompt | null>(null); useEffect(()=>{activeVizRef.current=activeViz;},[activeViz]);
+  const displayedTextRef = useRef<string>('');
+  useEffect(() => {
+    displayedTextRef.current = displayedText;
+  }, [displayedText]);
+
+  // auto-scroll text container so streaming text is always visible
+  useEffect(() => {
+    if (textContainerRef.current) {
+      const el = textContainerRef.current;
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [displayedText, currentSection]);
+
+  const currentSectionRef = useRef<SectionKey>('introduction');
+  useEffect(() => {
+    currentSectionRef.current = currentSection;
+  }, [currentSection]);
+
+  const activeVizRef = useRef<VisualizationPrompt | null>(null);
+  useEffect(() => {
+    activeVizRef.current = activeViz;
+  }, [activeViz]);
 
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
-  const isCrossOrigin = (url: string) => { try { return new URL(url, window.location.href).origin !== window.location.origin; } catch { return false; } };
+  const isCrossOrigin = (url: string) => {
+    try {
+      return new URL(url, window.location.href).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  };
 
-  const stableVideoSrc = useMemo(() => resolveAssetUrl(lecture?.video_path ?? ''), [lecture?.video_path]);
+  const stableVideoSrc = useMemo(
+    () => resolveAssetUrl(lecture?.video_path ?? ''),
+    [lecture?.video_path]
+  );
 
   const paragraphs: Record<SectionKey, string[]> = useMemo(() => {
     if (!lecture) return { introduction: [], main_body: [], conclusion: [] };
@@ -103,24 +132,30 @@ export default function LecturePlayer() {
   }, [lecture]);
 
   const totalParagraphsInSection = (section: SectionKey) => paragraphs[section].length;
-  const totalCharsAllParagraphs = useMemo(() =>
-    paragraphs.introduction.join('').length +
-    paragraphs.main_body.join('').length +
-    paragraphs.conclusion.join('').length
-  , [paragraphs]);
+
+  const totalCharsAllParagraphs = useMemo(
+    () =>
+      paragraphs.introduction.join('').length +
+      paragraphs.main_body.join('').length +
+      paragraphs.conclusion.join('').length,
+    [paragraphs]
+  );
 
   const sectionWordTargets = useMemo(() => {
     const introW = paragraphs.introduction.join(' ').trim().split(/\s+/).filter(Boolean).length;
-    const mainW  = paragraphs.main_body.join(' ').trim().split(/\s+/).filter(Boolean).length;
+    const mainW = paragraphs.main_body.join(' ').trim().split(/\s+/).filter(Boolean).length;
     const conclW = paragraphs.conclusion.join(' ').trim().split(/\s+/).filter(Boolean).length;
     return { introW, mainW, conclW, total: introW + mainW + conclW };
   }, [paragraphs]);
 
-  const sectionWords = useMemo(() => ({
-    introduction: paragraphs.introduction.join(' ').trim().split(/\s+/).filter(Boolean),
-    main_body:    paragraphs.main_body.join(' ').trim().split(/\s+/).filter(Boolean),
-    conclusion:   paragraphs.conclusion.join(' ').trim().split(/\s+/).filter(Boolean),
-  }), [paragraphs]);
+  const sectionWords = useMemo(
+    () => ({
+      introduction: paragraphs.introduction.join(' ').trim().split(/\s+/).filter(Boolean),
+      main_body: paragraphs.main_body.join(' ').trim().split(/\s+/).filter(Boolean),
+      conclusion: paragraphs.conclusion.join(' ').trim().split(/\s+/).filter(Boolean),
+    }),
+    [paragraphs]
+  );
 
   const getCurrentParagraph = () => paragraphs[currentSection][currentParagraphIndex] || '';
 
@@ -138,6 +173,7 @@ export default function LecturePlayer() {
       const paragraphDurationMs = Math.max(1200, (videoDuration as number) * 1000 * share);
       speedMs = Math.max(8, Math.floor(paragraphDurationMs / currentCharsRef.current.length));
     }
+
     if (typingIntervalRef.current) window.clearInterval(typingIntervalRef.current);
     const chars = currentCharsRef.current;
     typingIntervalRef.current = window.setInterval(() => {
@@ -153,7 +189,7 @@ export default function LecturePlayer() {
   // preload images
   useEffect(() => {
     if (!lecture?.visualizations) return;
-    lecture.visualizations.forEach(v => {
+    lecture.visualizations.forEach((v) => {
       if (!v.image_path) return;
       const url = resolveAssetUrl(v.image_path);
       if (imageCacheRef.current.has(url)) return;
@@ -165,11 +201,21 @@ export default function LecturePlayer() {
   }, [lecture]);
 
   // canvas constants
-  const CANVAS_W = 1920, CANVAS_H = 1080, FPS = 30, FRAME_MS = 1000 / FPS;
+  const CANVAS_W = 1920,
+    CANVAS_H = 1080,
+    FPS = 30,
+    FRAME_MS = 1000 / FPS;
   const lastTsRef = useRef(0);
   const togglerRef = useRef(0);
 
-  function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  function drawRoundedRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number
+  ) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
     ctx.moveTo(x + rr, y);
@@ -181,8 +227,10 @@ export default function LecturePlayer() {
   }
 
   function drawToCanvas() {
-    const canvas = canvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
     // bg
     ctx.fillStyle = '#ffffff';
@@ -242,7 +290,10 @@ export default function LecturePlayer() {
       for (const w of words) {
         const tryLine = cur ? cur + ' ' + w : w;
         if (ctx.measureText(tryLine).width <= maxTextWidth) cur = tryLine;
-        else { if (cur) out.push(cur); cur = w; }
+        else {
+          if (cur) out.push(cur);
+          cur = w;
+        }
       }
       if (cur) out.push(cur);
       return out.slice(-16);
@@ -255,18 +306,29 @@ export default function LecturePlayer() {
       const key = resolveAssetUrl(vizNow.image_path);
       const img = imageCacheRef.current.get(key);
       if (img && img.complete && img.naturalWidth) {
-        const boxW = imageBoxW, boxH = imageBoxH;
+        const boxW = imageBoxW,
+          boxH = imageBoxH;
         const imgAR = img.naturalWidth / img.naturalHeight;
         const boxAR = boxW / boxH;
         let drawW: number, drawH: number;
-        if (imgAR > boxAR) { drawW = boxW; drawH = drawW / imgAR; } else { drawH = boxH; drawW = drawH * imgAR; }
+        if (imgAR > boxAR) {
+          drawW = boxW;
+          drawH = drawW / imgAR;
+        } else {
+          drawH = boxH;
+          drawW = drawH * imgAR;
+        }
         const dx = imageBoxX + (boxW - drawW) / 2;
         const dy = imageBoxY + (boxH - drawH) / 2;
 
         drawRoundedRect(ctx, dx - 6, dy - 6, drawW + 12, drawH + 12, 18);
-        ctx.fillStyle = '#ffffff'; ctx.fill();
-        try { ctx.drawImage(img, dx, dy, drawW, drawH); } catch {}
-        ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        try {
+          ctx.drawImage(img, dx, dy, drawW, drawH);
+        } catch {}
+        ctx.strokeStyle = '#e5e7eb';
+        ctx.lineWidth = 2;
         drawRoundedRect(ctx, dx - 6, dy - 6, drawW + 12, drawH + 12, 18);
         ctx.stroke();
       }
@@ -289,7 +351,9 @@ export default function LecturePlayer() {
     drawRoundedRect(ctx, avatarX, avatarY, avatarSize, avatarSize, 24);
     ctx.clip();
     if (video && video.readyState >= 2 && !video.paused) {
-      try { ctx.drawImage(video, avatarX, avatarY, avatarSize, avatarSize); } catch {}
+      try {
+        ctx.drawImage(video, avatarX, avatarY, avatarSize, avatarSize);
+      } catch {}
     } else {
       ctx.fillStyle = '#f3f4f6';
       ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
@@ -306,7 +370,9 @@ export default function LecturePlayer() {
 
   function pickMime(): { mimeType?: string; ext: 'webm' } {
     const types = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-    const chosen = types.find(t => (window as any).MediaRecorder && MediaRecorder.isTypeSupported(t));
+    const chosen = types.find(
+      (t) => (window as any).MediaRecorder && MediaRecorder.isTypeSupported(t)
+    );
     return { mimeType: chosen, ext: 'webm' };
   }
 
@@ -318,11 +384,13 @@ export default function LecturePlayer() {
     canvas.height = CANVAS_H;
 
     drawToCanvas();
-    await new Promise(r => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
 
     const canvasStream = canvas.captureStream(30);
     if (canvasStream.getVideoTracks().length === 0) {
-      setCompilationStatus('error'); setIsCompiling(false); return;
+      setCompilationStatus('error');
+      setIsCompiling(false);
+      return;
     }
 
     const video = videoRef.current;
@@ -333,14 +401,17 @@ export default function LecturePlayer() {
     try {
       const vs: MediaStream | undefined = (video as any).captureStream?.();
       const aTracks = vs ? vs.getAudioTracks() : [];
-      if (aTracks.length) aTracks.forEach(t => canvasStream.addTrack(t));
+      if (aTracks.length) aTracks.forEach((t) => canvasStream.addTrack(t));
       else {
         const ac = new AudioContext();
-        try { await ac.resume(); } catch {}
+        try {
+          await ac.resume();
+        } catch {}
         const src = ac.createMediaElementSource(video);
         const dst = ac.createMediaStreamDestination();
-        src.connect(dst); src.connect(ac.destination);
-        dst.stream.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+        src.connect(dst);
+        src.connect(ac.destination);
+        dst.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t));
       }
     } catch {}
 
@@ -351,11 +422,18 @@ export default function LecturePlayer() {
     );
 
     recordedChunksRef.current = [];
-    mr.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
     mr.onstop = () => {
       video.loop = originalLoop;
       const total = recordedChunksRef.current.reduce((s, b) => s + b.size, 0);
-      if (!total) { setCompilationStatus('error'); setIsCompiling(false); setShowProgress(false); return; }
+      if (!total) {
+        setCompilationStatus('error');
+        setIsCompiling(false);
+        setShowProgress(false);
+        return;
+      }
       const blob = new Blob(recordedChunksRef.current, { type: mimeType || 'video/webm' });
       const url = URL.createObjectURL(blob);
       setCompiledVideoUrl(url);
@@ -367,7 +445,9 @@ export default function LecturePlayer() {
       compiledOnceRef.current = true;
 
       if (opts?.initiatedByDownload) {
-        try { video.pause(); } catch {}
+        try {
+          video.pause();
+        } catch {}
         video.currentTime = 0;
         setIsPlaying(false);
       }
@@ -394,7 +474,7 @@ export default function LecturePlayer() {
       const t = video.currentTime;
       const dur = isFinite(video.duration) ? video.duration : undefined;
       const atEnd = dur ? t >= dur - 0.08 : false;
-      const wrapped = (opts?.preserveLoop === true) && t < lastT - 0.2; // not really used now
+      const wrapped = opts?.preserveLoop === true && t < lastT - 0.2; // not really used now
       lastT = t;
 
       if (atEnd || wrapped) setTimeout(() => stopRecording(), 350);
@@ -404,8 +484,13 @@ export default function LecturePlayer() {
   }
 
   function stopRecording() {
-    if (recordingRafRef.current) { cancelAnimationFrame(recordingRafRef.current); recordingRafRef.current = null; }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
+    if (recordingRafRef.current) {
+      cancelAnimationFrame(recordingRafRef.current);
+      recordingRafRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
   }
 
   async function startCompilation(showProgressBar = false, videoAlreadyPlaying = false) {
@@ -420,7 +505,10 @@ export default function LecturePlayer() {
 
     if (!isFinite(video.duration) || !video.duration) {
       await new Promise<void>((resolve) => {
-        const h = () => { video.removeEventListener('loadedmetadata', h); resolve(); };
+        const h = () => {
+          video.removeEventListener('loadedmetadata', h);
+          resolve();
+        };
         video.addEventListener('loadedmetadata', h, { once: true });
       });
     }
@@ -429,11 +517,16 @@ export default function LecturePlayer() {
 
     try {
       if (!videoAlreadyPlaying || video.paused) {
-        video.muted = false; setIsMuted(false);
+        video.muted = false;
+        setIsMuted(false);
         await video.play();
       }
     } catch {
-      try { video.muted = true; setIsMuted(true); await video.play(); } catch {}
+        try {
+          video.muted = true;
+          setIsMuted(true);
+          await video.play();
+        } catch {}
     }
     if (!isPlaying) setIsPlaying(!video.paused);
 
@@ -448,7 +541,7 @@ export default function LecturePlayer() {
 
     await startRecording({
       preserveLoop: videoAlreadyPlaying && !showProgressBar,
-      initiatedByDownload: showProgressBar
+      initiatedByDownload: showProgressBar,
     });
 
     const chk = setInterval(() => {
@@ -487,8 +580,15 @@ export default function LecturePlayer() {
   useEffect(() => {
     if (!lecture) return;
     if (captions && captions.length > 0) return;
-    if (!isPlaying) { if (typingIntervalRef.current) { window.clearInterval(typingIntervalRef.current); typingIntervalRef.current = null; } return; }
-    const chars = currentCharsRef.current; if (!chars || chars.length === 0) return;
+    if (!isPlaying) {
+      if (typingIntervalRef.current) {
+        window.clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+      }
+      return;
+    }
+    const chars = currentCharsRef.current;
+    if (!chars || chars.length === 0) return;
 
     let speedMs = 18;
     if (videoDuration && totalCharsAllParagraphs > 0 && chars.length > 0) {
@@ -507,35 +607,54 @@ export default function LecturePlayer() {
       }
     }, speedMs);
 
-    return () => { if (typingIntervalRef.current) { window.clearInterval(typingIntervalRef.current); typingIntervalRef.current = null; } };
+    return () => {
+      if (typingIntervalRef.current) {
+        window.clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+      }
+    };
   }, [lecture, isPlaying, videoDuration, totalCharsAllParagraphs, captions, currentSection, currentParagraphIndex]);
 
   // play/pause sync
   useEffect(() => {
-    const v = videoRef.current; if (!v) return;
+    const v = videoRef.current;
+    if (!v) return;
     if (isPlaying) v.play().catch(() => {});
     else v.pause();
   }, [isPlaying]);
 
   // muted sync
   useEffect(() => {
-    const v = videoRef.current; if (!v) return;
+    const v = videoRef.current;
+    if (!v) return;
     v.muted = isMuted;
-    if (isPlaying && isMuted) { v.muted = false; setIsMuted(false); }
+    if (isPlaying && isMuted) {
+      v.muted = false;
+      setIsMuted(false);
+    }
   }, [isMuted, isPlaying]);
 
   // keep last playback time up-to-date
   useEffect(() => {
-    const v = videoRef.current; if (!v) return;
-    const onTime = () => { lastPlaybackTimeRef.current = v.currentTime || 0; };
+    const v = videoRef.current;
+    if (!v) return;
+    const onTime = () => {
+      lastPlaybackTimeRef.current = v.currentTime || 0;
+    };
     v.addEventListener('timeupdate', onTime);
     return () => v.removeEventListener('timeupdate', onTime);
   }, []);
 
   // stall recovery
   useEffect(() => {
-    const v = videoRef.current; if (!v) return;
-    const handle = () => { if (!isPlaying) return; try { void v.play(); } catch {} };
+    const v = videoRef.current;
+    if (!v) return;
+    const handle = () => {
+      if (!isPlaying) return;
+      try {
+        void v.play();
+      } catch {}
+    };
     v.addEventListener('waiting', handle);
     v.addEventListener('stalled', handle);
     v.addEventListener('suspend', handle);
@@ -550,8 +669,11 @@ export default function LecturePlayer() {
 
   // stop the lecture when the video ends (no looping)
   useEffect(() => {
-    const v = videoRef.current; if (!v) return;
-    const onEnded = () => { setIsPlaying(false); };
+    const v = videoRef.current;
+    if (!v) return;
+    const onEnded = () => {
+      setIsPlaying(false);
+    };
     v.addEventListener('ended', onEnded);
     return () => v.removeEventListener('ended', onEnded);
   }, []);
@@ -573,7 +695,12 @@ export default function LecturePlayer() {
             const c = cuesRaw[i] as any;
             const txt = (c.text || '').replace(/<[^>]+>/g, '').trim();
             if (!txt) continue;
-            parsed.push({ start: c.startTime, end: c.endTime, text: txt, words: txt.split(/\s+/).filter(Boolean) });
+            parsed.push({
+              start: c.startTime,
+              end: c.endTime,
+              text: txt,
+              words: txt.split(/\s+/).filter(Boolean),
+            });
           }
           if (parsed.length > 0) setCaptions(parsed);
         }
@@ -596,7 +723,10 @@ export default function LecturePlayer() {
             if (res.ok) {
               const text = await res.text();
               const cues = parseCaptions(text);
-              if (cues.length > 0) { setCaptions(cues); break; }
+              if (cues.length > 0) {
+                setCaptions(cues);
+                break;
+              }
             }
           } catch {}
         }
@@ -609,11 +739,19 @@ export default function LecturePlayer() {
     if (!v || !captions || captions.length === 0) return;
 
     const tick = () => {
-      if (!videoRef.current || !isPlaying) { rafIdRef.current = null; return; }
+      if (!videoRef.current || !isPlaying) {
+        rafIdRef.current = null;
+        return;
+      }
       const t = videoRef.current.currentTime;
       const cue = captions.find((c) => t >= c.start && t <= c.end);
-      const prev = [...captions].filter((c) => t >= c.start).sort((a, b) => b.start - a.start)[0];
-      const next = [...captions].filter((c) => t < c.start).sort((a, b) => a.start - b.start)[0];
+      const prev = [...captions]
+        .filter((c) => t >= c.start)
+        .sort((a, b) => b.start - a.start)[0];
+      const next = [...captions]
+        .filter((c) => t < c.start)
+        .sort((a, b) => a.start - b.start)[0];
+
       if (cue) {
         const elapsed = Math.max(0, Math.min(cue.end - cue.start, t - cue.start));
         const ratio = cue.end > cue.start ? elapsed / (cue.end - cue.start) : 1;
@@ -645,32 +783,65 @@ export default function LecturePlayer() {
       rafIdRef.current = window.requestAnimationFrame(tick);
     };
 
-    if (isPlaying && rafIdRef.current == null) rafIdRef.current = window.requestAnimationFrame(tick);
-    if (!isPlaying && rafIdRef.current != null) { window.cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+    if (isPlaying && rafIdRef.current == null) {
+      rafIdRef.current = window.requestAnimationFrame(tick);
+    }
+    if (!isPlaying && rafIdRef.current != null) {
+      window.cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
 
-    return () => { if (rafIdRef.current != null) { window.cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; } };
+    return () => {
+      if (rafIdRef.current != null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
   }, [captions, isPlaying]);
 
   function parseCaptions(src: string): CaptionCue[] {
     const lines = src.replace(/\r/g, '').split('\n');
     const cues: CaptionCue[] = [];
-    const timeRe = /(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})/;
+    const timeRe =
+      /(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})/;
     let i = 0;
     while (i < lines.length) {
-      if (!lines[i].trim()) { i++; continue; }
+      if (!lines[i].trim()) {
+        i++;
+        continue;
+      }
       if (/^\d+$/.test(lines[i].trim())) i++;
-      const m = timeRe.exec(lines[i]); if (!m) { i++; continue; }
-      const start = (parseInt(m[1] || '00') * 3600) + (parseInt(m[2]) * 60) + parseInt(m[3]) + parseInt(m[4]) / 1000;
-      const end   = (parseInt(m[5] || '00') * 3600) + (parseInt(m[6]) * 60) + parseInt(m[7]) + parseInt(m[8]) / 1000;
+      const m = timeRe.exec(lines[i]);
+      if (!m) {
+        i++;
+        continue;
+      }
+      const start =
+        parseInt(m[1] || '00') * 3600 +
+        parseInt(m[2]) * 60 +
+        parseInt(m[3]) +
+        parseInt(m[4]) / 1000;
+      const end =
+        parseInt(m[5] || '00') * 3600 +
+        parseInt(m[6]) * 60 +
+        parseInt(m[7]) +
+        parseInt(m[8]) / 1000;
       i++;
       const textLines: string[] = [];
-      while (i < lines.length && lines[i].trim() !== '') { textLines.push(lines[i]); i++; }
+      while (i < lines.length && lines[i].trim() !== '') {
+        textLines.push(lines[i]);
+        i++;
+      }
       const text = textLines.join(' ').replace(/<[^>]+>/g, '').trim();
       const words = text.split(/\s+/).filter(Boolean);
       if (text) cues.push({ start, end, text, words, cumStartWords: 0 });
       while (i < lines.length && lines[i].trim() === '') i++;
     }
-    let cum = 0; for (const c of cues) { c.cumStartWords = cum; cum += c.words.length; }
+    let cum = 0;
+    for (const c of cues) {
+      c.cumStartWords = cum;
+      cum += c.words.length;
+    }
     return cues;
   }
 
@@ -681,8 +852,18 @@ export default function LecturePlayer() {
       restartTypingFor(currentSection, nextParagraphIndex);
       return;
     }
-    if (currentSection === 'introduction') { setCurrentSection('main_body'); setCurrentParagraphIndex(0); restartTypingFor('main_body', 0); return; }
-    if (currentSection === 'main_body')   { setCurrentSection('conclusion'); setCurrentParagraphIndex(0); restartTypingFor('conclusion', 0); return; }
+    if (currentSection === 'introduction') {
+      setCurrentSection('main_body');
+      setCurrentParagraphIndex(0);
+      restartTypingFor('main_body', 0);
+      return;
+    }
+    if (currentSection === 'main_body') {
+      setCurrentSection('conclusion');
+      setCurrentParagraphIndex(0);
+      restartTypingFor('conclusion', 0);
+      return;
+    }
     // do not force pause here; let the video 'ended' event stop playback
   }
 
@@ -690,9 +871,11 @@ export default function LecturePlayer() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background/95 via-background to-background/95">
         <div className="container mx-auto max-w-6xl px-4 py-6 md:py-8 lg:py-10">
-          <Card className="p-8">
+          <Card className="glass-panel p-8 animate-soft-fade">
             <h1 className="text-2xl font-semibold mb-2">No lecture to play</h1>
-            <p className="text-muted-foreground mb-6">Generate a lecture first, then open the player.</p>
+            <p className="text-muted-foreground mb-6">
+              Generate a lecture first, then open the player.
+            </p>
             <Button onClick={() => navigate('/generate')}>Generate from Prompt</Button>
           </Card>
         </div>
@@ -722,16 +905,32 @@ export default function LecturePlayer() {
                 if (!isPlaying) {
                   if (v) {
                     // if replay after completion, reset everything to start the whole lecture again
-                    if (v.ended || (isFinite(v.duration) && v.currentTime >= (v.duration - 0.05))) {
-                      try { v.currentTime = 0; } catch {}
+                    if (v.ended || (isFinite(v.duration) && v.currentTime >= v.duration - 0.05)) {
+                      try {
+                        v.currentTime = 0;
+                      } catch {}
                       lastWordCountRef.current = -1;
                       setCurrentSection('introduction');
                       setCurrentParagraphIndex(0);
                       setDisplayedText('');
                     }
-                    try { v.muted = false; setIsMuted(false); await v.play(); setIsPlaying(true); }
-                    catch { try { v.muted = true; setIsMuted(true); await v.play(); setIsPlaying(true); } catch {} }
-                  } else { setIsMuted(false); setIsPlaying(true); }
+                    try {
+                      v.muted = false;
+                      setIsMuted(false);
+                      await v.play();
+                      setIsPlaying(true);
+                    } catch {
+                      try {
+                        v.muted = true;
+                        setIsMuted(true);
+                        await v.play();
+                        setIsPlaying(true);
+                      } catch {}
+                    }
+                  } else {
+                    setIsMuted(false);
+                    setIsPlaying(true);
+                  }
                   // compile only on the very first watch
                   if (compilationStatus === 'idle' && !compiledOnceRef.current) {
                     startCompilation(false, true);
@@ -774,27 +973,55 @@ export default function LecturePlayer() {
           </div>
         </div>
 
-        <Card className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-[0_22px_55px_rgba(15,23,42,0.42)]">
+        <Card className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-[0_22px_55px_rgba(15,23,42,0.42)] glass-panel animate-rise">
+          {/* Ambient glow overlay */}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-40"
+            aria-hidden="true"
+          >
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),_radial-gradient(circle_at_bottom,_rgba(129,140,248,0.18),transparent_55%)]" />
+          </div>
+
           {/* hidden canvas for recording */}
           <canvas ref={canvasRef} className="hidden" />
 
           {/* Stage */}
           <div
             ref={stageRef}
-            className="aspect-video w-full relative overflow-hidden rounded-2xl border border-slate-200 bg-white/95 p-4 md:p-8 shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
+            className="aspect-video w-full relative overflow-hidden rounded-2xl border border-slate-200 bg-white/95 p-4 md:p-8 shadow-[0_18px_40px_rgba(15,23,42,0.18)] relative z-10"
           >
-            <div className={`grid h-full ${hasImage ? 'grid-cols-1 md:grid-cols-12 gap-6' : 'grid-cols-1'}`}>
+            {/* Live playback badge */}
+            {isPlaying && (
+              <div className="pointer-events-none absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Live playback
+              </div>
+            )}
+
+            <div
+              className={`grid h-full min-h-0 ${
+                hasImage ? 'grid-cols-1 md:grid-cols-12 gap-6' : 'grid-cols-1'
+              }`}
+            >
               <div
-                className={hasImage ? 'md:col-span-7 h-full' : 'h-full'}
+                className={
+                  hasImage
+                    ? 'md:col-span-7 flex h-full min-h-0 flex-col'
+                    : 'flex h-full min-h-0 flex-col'
+                }
                 style={!hasImage ? { paddingRight: '22rem' } : undefined}
               >
-                <h2 className="text-xl md:text-2xl font-semibold mb-3 text-slate-900">
+                <h2 className="text-xl md:text-2xl font-semibold mb-4">
                   {SECTION_TITLES[currentSection]}
                 </h2>
-                <p className="whitespace-pre-wrap leading-7 md:leading-8 text-base md:text-lg text-slate-800">
-                  {displayedText}
-                </p>
-
+                <div
+                  ref={textContainerRef}
+                  className="flex-1 min-h-0 overflow-y-auto pr-1"
+                >
+                  <p className="whitespace-pre-wrap leading-7 md:leading-8 text-base md:text-lg">
+                    {displayedText}
+                  </p>
+                </div>
               </div>
 
               {hasImage && (
@@ -814,12 +1041,16 @@ export default function LecturePlayer() {
             {/* ✅ Persistent avatar video — rendered once; consistent size; never unmounted */}
             {stableVideoSrc && (
               <div
-                className="absolute right-6 bottom-6 h-[min(16rem,35vh)] w-[min(16rem,35vh)] rounded-xl shadow-lg border border-neutral-200 bg-white overflow-hidden z-10"
+                className={`absolute right-6 bottom-6 h-[min(16rem,35vh)] w-[min(16rem,35vh)] rounded-2xl border border-neutral-200 bg-black/80 overflow-hidden z-20 transition-smooth shadow-[0_18px_40px_rgba(15,23,42,0.5)] ${
+                  isPlaying ? 'ring-2 ring-sky-400/80 shadow-[0_0_45px_rgba(56,189,248,0.75)]' : ''
+                }`}
               >
                 <video
                   ref={videoRef}
                   src={stableVideoSrc}
-                  {...(isCrossOrigin(stableVideoSrc) ? { crossOrigin: 'anonymous' as const } : {})}
+                  {...(isCrossOrigin(stableVideoSrc)
+                    ? { crossOrigin: 'anonymous' as const }
+                    : {})}
                   muted={isMuted}
                   controls={false}
                   playsInline
@@ -838,7 +1069,7 @@ export default function LecturePlayer() {
                   )}
                 </video>
                 {isMuted && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 text-white text-xs">
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/35 text-white text-xs">
                     Muted
                   </div>
                 )}
@@ -848,9 +1079,12 @@ export default function LecturePlayer() {
         </Card>
 
         {compilationStatus === 'compiling' && (
-          <div className="mt-5 rounded-2xl border border-border/80 bg-card/95 p-4 space-y-3 shadow-sm">
+          <div className="mt-5 rounded-2xl border border-border/80 bg-card/95 p-4 space-y-3 shadow-md glass-panel animate-soft-fade">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Compiling video...</span>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span>Compiling video...</span>
+              </div>
               <div className="flex items-center gap-3">
                 <span>{Math.round(compilationProgress)}%</span>
                 {timeRemaining !== null && timeRemaining > 0 && (
@@ -858,14 +1092,16 @@ export default function LecturePlayer() {
                 )}
               </div>
             </div>
-            <div className="w-full bg-muted rounded-full h-2.5">
+            <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
               <div
                 className="bg-primary h-2.5 rounded-full transition-all duration-300"
                 style={{ width: `${compilationProgress}%` }}
               />
             </div>
             <div className="text-xs text-muted-foreground text-center">
-              {showProgress ? 'Please wait while the video is being compiled...' : 'Compiling in the background...'}
+              {showProgress
+                ? 'Please wait while the video is being compiled...'
+                : 'Compiling in the background...'}
             </div>
           </div>
         )}

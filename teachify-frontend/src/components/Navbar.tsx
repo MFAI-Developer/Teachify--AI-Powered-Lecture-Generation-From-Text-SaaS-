@@ -1,17 +1,47 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { GraduationCap, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { GraduationCap, Menu, X, Moon, Sun } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Theme state: 'light' or 'dark'
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+
+    const stored = localStorage.getItem('teachify-theme');
+    if (stored === 'light' || stored === 'dark') {
+      return stored;
+    }
+
+    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    return prefersDark ? 'dark' : 'light';
+  });
+
+  // Apply theme to <html> and persist
+  useEffect(() => {
+    const root = document.documentElement;
+
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+
+    localStorage.setItem('teachify-theme', theme);
+  }, [theme]);
+
   const handleLogout = async () => {
     await logout();
     navigate('/');
+  };
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
   };
 
   return (
@@ -58,12 +88,30 @@ export const Navbar = () => {
             </div>
           </div>
 
-          {/* Desktop Auth Actions */}
+          {/* Right side: theme toggle + auth actions (desktop) */}
           <div className="hidden md:flex items-center gap-3">
+            {/* Theme toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full border border-border/80"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </Button>
+
             {isAuthenticated ? (
               <>
                 <Button variant="ghost" onClick={() => navigate('/dashboard')}>
                   Dashboard
+                </Button>
+                <Button variant="ghost" onClick={() => navigate('/profile')}>
+                  Profile
                 </Button>
                 <Button variant="ghost" onClick={handleLogout}>
                   Sign Out
@@ -79,19 +127,35 @@ export const Navbar = () => {
             )}
           </div>
 
-          {/* Mobile Menu Button */}
-          <button
-            className="inline-flex items-center justify-center rounded-full border border-border/70 bg-card/80 p-2 text-foreground shadow-sm transition-smooth hover:border-primary/70 hover:bg-background/80 md:hidden"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle navigation menu"
-          >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* Mobile Menu Button + theme toggle inline */}
+          <div className="flex items-center gap-2 md:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full border border-border/80"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </Button>
+
+            <button
+              className="inline-flex items-center justify-center rounded-full border border-border/70 bg-card/80 p-2 text-foreground shadow-sm transition-smooth hover:border-primary/70 hover:bg-background/80 md:hidden"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden pb-4 pt-3 border-t border-border/80">
+          <div className="md:hidden pb-4 pt-3 border-t border-border/80 animate-soft-fade">
             <div className="flex flex-col gap-4">
               <Link
                 to="/"
@@ -120,6 +184,13 @@ export const Navbar = () => {
                     onClick={() => navigate('/dashboard')}
                   >
                     Dashboard
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="justify-start"
+                    onClick={() => navigate('/profile')}
+                  >
+                    Profile
                   </Button>
                   <Button
                     variant="ghost"

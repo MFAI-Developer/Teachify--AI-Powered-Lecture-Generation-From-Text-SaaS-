@@ -34,7 +34,9 @@ const App = () => (
       <Sonner position="top-right" />
       <AuthProvider>
         <BrowserRouter>
-          <div className="flex flex-col min-h-screen">
+          {/* 🔴 Main app shell with global animated background layer */}
+          <div className="relative flex flex-col min-h-screen">
+            <div className="app-background-layer" aria-hidden="true" />
             <Navbar />
             <main className="flex-1">
               <Routes>
