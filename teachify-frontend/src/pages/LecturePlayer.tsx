@@ -688,8 +688,8 @@ export default function LecturePlayer() {
 
   if (!lecture) {
     return (
-      <div className="min-h-screen">
-        <div className="container mx-auto px-4 py-10 max-w-5xl">
+      <div className="min-h-screen bg-gradient-to-b from-background/95 via-background to-background/95">
+        <div className="container mx-auto max-w-6xl px-4 py-6 md:py-8 lg:py-10">
           <Card className="p-8">
             <h1 className="text-2xl font-semibold mb-2">No lecture to play</h1>
             <p className="text-muted-foreground mb-6">Generate a lecture first, then open the player.</p>
@@ -705,12 +705,16 @@ export default function LecturePlayer() {
   return (
     <div className="min-h-screen">
       <div className="container mx-auto px-4 py-6 max-w-6xl">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{lecture.topic}</h1>
-            <p className="text-muted-foreground">{captions ? 'Caption-synced' : SECTION_TITLES[currentSection]}</p>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+              {lecture.topic}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {captions ? 'Caption-synced lecture with avatar' : SECTION_TITLES[currentSection]}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 md:gap-3">
             <Button
               variant="secondary"
               onClick={async () => {
@@ -770,21 +774,27 @@ export default function LecturePlayer() {
           </div>
         </div>
 
-        <Card className="relative overflow-hidden rounded-xl">
+        <Card className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-[0_22px_55px_rgba(15,23,42,0.42)]">
           {/* hidden canvas for recording */}
           <canvas ref={canvasRef} className="hidden" />
 
           {/* Stage */}
-          <div ref={stageRef} className="aspect-video w-full bg-white relative overflow-hidden p-6 md:p-10">
+          <div
+            ref={stageRef}
+            className="aspect-video w-full relative overflow-hidden rounded-2xl border border-slate-200 bg-white/95 p-4 md:p-8 shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
+          >
             <div className={`grid h-full ${hasImage ? 'grid-cols-1 md:grid-cols-12 gap-6' : 'grid-cols-1'}`}>
               <div
                 className={hasImage ? 'md:col-span-7 h-full' : 'h-full'}
                 style={!hasImage ? { paddingRight: '22rem' } : undefined}
               >
-                <h2 className="text-xl md:text-2xl font-semibold mb-4">{SECTION_TITLES[currentSection]}</h2>
-                <p className="whitespace-pre-wrap leading-7 md:leading-8 text-base md:text-lg">
+                <h2 className="text-xl md:text-2xl font-semibold mb-3 text-slate-900">
+                  {SECTION_TITLES[currentSection]}
+                </h2>
+                <p className="whitespace-pre-wrap leading-7 md:leading-8 text-base md:text-lg text-slate-800">
                   {displayedText}
                 </p>
+
               </div>
 
               {hasImage && (
@@ -838,7 +848,7 @@ export default function LecturePlayer() {
         </Card>
 
         {compilationStatus === 'compiling' && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-5 rounded-2xl border border-border/80 bg-card/95 p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>Compiling video...</span>
               <div className="flex items-center gap-3">
