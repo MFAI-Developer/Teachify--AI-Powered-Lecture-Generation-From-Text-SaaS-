@@ -15,7 +15,6 @@ __pycache__/
 service-account.json
 uploads/
 data/
-media/
 static/generated/
 *.log
 

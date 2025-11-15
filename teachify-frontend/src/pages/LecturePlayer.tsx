@@ -71,12 +71,17 @@ export default function LecturePlayer() {
   const currentCharsRef = useRef<string[]>([]);
   const currentParagraphKeyRef = useRef<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const lastWordCountRef = useRef<number>(-1);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingRafRef = useRef<number | null>(null);
+
+  // keep one <video> alive and track time so we can resume seamlessly
+  const lastPlaybackTimeRef = useRef<number>(0);
+  const compiledOnceRef = useRef<boolean>(false);
 
   // live refs used by canvas draw
   const displayedTextRef = useRef<string>(''); useEffect(()=>{displayedTextRef.current=displayedText;},[displayedText]);
@@ -267,7 +272,7 @@ export default function LecturePlayer() {
       }
     }
 
-    // avatar
+    // avatar (draw the persistent <video> into the canvas)
     const video = videoRef.current;
     ctx.shadowColor = 'rgba(0,0,0,0.18)';
     ctx.shadowBlur = 24;
@@ -305,7 +310,7 @@ export default function LecturePlayer() {
     return { mimeType: chosen, ext: 'webm' };
   }
 
-  // 🔧 UPDATED: preserveLoop & initiatedByDownload to avoid UI halt near conclusion
+  // recording / compilation (unchanged logic, but now the <video> never unmounts so streams stay intact)
   async function startRecording(opts?: { preserveLoop?: boolean; initiatedByDownload?: boolean }) {
     if (!canvasRef.current || !videoRef.current) return;
     const canvas = canvasRef.current;
@@ -316,13 +321,15 @@ export default function LecturePlayer() {
     await new Promise(r => requestAnimationFrame(() => r(null)));
 
     const canvasStream = canvas.captureStream(30);
-    if (canvasStream.getVideoTracks().length === 0) { setCompilationStatus('error'); setIsCompiling(false); return; }
+    if (canvasStream.getVideoTracks().length === 0) {
+      setCompilationStatus('error'); setIsCompiling(false); return;
+    }
 
     const video = videoRef.current;
     const originalLoop = video.loop;
-    if (!opts?.preserveLoop) video.loop = false; // keep looping during background compile
+    video.loop = false; // natural end only
 
-    // attach audio
+    // attach audio from the persistent video
     try {
       const vs: MediaStream | undefined = (video as any).captureStream?.();
       const aTracks = vs ? vs.getAudioTracks() : [];
@@ -346,7 +353,7 @@ export default function LecturePlayer() {
     recordedChunksRef.current = [];
     mr.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
     mr.onstop = () => {
-      video.loop = originalLoop; // restore whatever the UI was using
+      video.loop = originalLoop;
       const total = recordedChunksRef.current.reduce((s, b) => s + b.size, 0);
       if (!total) { setCompilationStatus('error'); setIsCompiling(false); setShowProgress(false); return; }
       const blob = new Blob(recordedChunksRef.current, { type: mimeType || 'video/webm' });
@@ -357,8 +364,8 @@ export default function LecturePlayer() {
       setTimeRemaining(0);
       setIsCompiling(false);
       setShowProgress(false);
+      compiledOnceRef.current = true;
 
-      // Only pause/reset the video if user explicitly started foreground compile (Download)
       if (opts?.initiatedByDownload) {
         try { video.pause(); } catch {}
         video.currentTime = 0;
@@ -369,7 +376,6 @@ export default function LecturePlayer() {
     mediaRecorderRef.current = mr;
     mr.start(100);
 
-    // draw loop
     const drawLoop = (ts: number) => {
       if (mediaRecorderRef.current?.state === 'recording') {
         if (ts - lastTsRef.current >= FRAME_MS) {
@@ -381,23 +387,18 @@ export default function LecturePlayer() {
     };
     recordingRafRef.current = requestAnimationFrame(drawLoop);
 
-    // robust end detection:
-    // - stop at natural end
-    // - OR, when loop is preserved, stop at first wrap (currentTime decreases)
+    // stop at natural end
     let lastT = video.currentTime;
     const checkEnd = () => {
       if (mediaRecorderRef.current?.state !== 'recording') return;
       const t = video.currentTime;
       const dur = isFinite(video.duration) ? video.duration : undefined;
       const atEnd = dur ? t >= dur - 0.08 : false;
-      const wrapped = (opts?.preserveLoop === true) && t < lastT - 0.2; // loop wrap detected
+      const wrapped = (opts?.preserveLoop === true) && t < lastT - 0.2; // not really used now
       lastT = t;
 
-      if (atEnd || wrapped) {
-        setTimeout(() => stopRecording(), 350);
-      } else {
-        setTimeout(checkEnd, 120);
-      }
+      if (atEnd || wrapped) setTimeout(() => stopRecording(), 350);
+      else setTimeout(checkEnd, 120);
     };
     checkEnd();
   }
@@ -445,9 +446,6 @@ export default function LecturePlayer() {
       }
     }, 120);
 
-    // 🔧 pass flags:
-    // - background compile (Play): keep loop preserved; don't pause/reset when done
-    // - foreground compile (Download): do not preserve loop; pause/reset when done
     await startRecording({
       preserveLoop: videoAlreadyPlaying && !showProgressBar,
       initiatedByDownload: showProgressBar
@@ -526,6 +524,14 @@ export default function LecturePlayer() {
     if (isPlaying && isMuted) { v.muted = false; setIsMuted(false); }
   }, [isMuted, isPlaying]);
 
+  // keep last playback time up-to-date
+  useEffect(() => {
+    const v = videoRef.current; if (!v) return;
+    const onTime = () => { lastPlaybackTimeRef.current = v.currentTime || 0; };
+    v.addEventListener('timeupdate', onTime);
+    return () => v.removeEventListener('timeupdate', onTime);
+  }, []);
+
   // stall recovery
   useEffect(() => {
     const v = videoRef.current; if (!v) return;
@@ -541,6 +547,14 @@ export default function LecturePlayer() {
       v.removeEventListener('error', handle);
     };
   }, [isPlaying]);
+
+  // stop the lecture when the video ends (no looping)
+  useEffect(() => {
+    const v = videoRef.current; if (!v) return;
+    const onEnded = () => { setIsPlaying(false); };
+    v.addEventListener('ended', onEnded);
+    return () => v.removeEventListener('ended', onEnded);
+  }, []);
 
   function handleLoadedMetadata() {
     const v = videoRef.current;
@@ -669,7 +683,7 @@ export default function LecturePlayer() {
     }
     if (currentSection === 'introduction') { setCurrentSection('main_body'); setCurrentParagraphIndex(0); restartTypingFor('main_body', 0); return; }
     if (currentSection === 'main_body')   { setCurrentSection('conclusion'); setCurrentParagraphIndex(0); restartTypingFor('conclusion', 0); return; }
-    setIsPlaying(false);
+    // do not force pause here; let the video 'ended' event stop playback
   }
 
   if (!lecture) {
@@ -703,10 +717,21 @@ export default function LecturePlayer() {
                 const v = videoRef.current;
                 if (!isPlaying) {
                   if (v) {
+                    // if replay after completion, reset everything to start the whole lecture again
+                    if (v.ended || (isFinite(v.duration) && v.currentTime >= (v.duration - 0.05))) {
+                      try { v.currentTime = 0; } catch {}
+                      lastWordCountRef.current = -1;
+                      setCurrentSection('introduction');
+                      setCurrentParagraphIndex(0);
+                      setDisplayedText('');
+                    }
                     try { v.muted = false; setIsMuted(false); await v.play(); setIsPlaying(true); }
                     catch { try { v.muted = true; setIsMuted(true); await v.play(); setIsPlaying(true); } catch {} }
                   } else { setIsMuted(false); setIsPlaying(true); }
-                  if (compilationStatus === 'idle') startCompilation(false, true); // background compile (loop preserved)
+                  // compile only on the very first watch
+                  if (compilationStatus === 'idle' && !compiledOnceRef.current) {
+                    startCompilation(false, true);
+                  }
                 } else {
                   setIsPlaying(false);
                   if (v) v.pause();
@@ -727,7 +752,7 @@ export default function LecturePlayer() {
                   link.click();
                   document.body.removeChild(link);
                 } else if (compilationStatus === 'idle') {
-                  await startCompilation(true, false); // foreground compile (do not preserve loop)
+                  await startCompilation(true, false);
                 } else if (compilationStatus === 'compiling') {
                   setShowProgress(true);
                 }
@@ -749,8 +774,8 @@ export default function LecturePlayer() {
           {/* hidden canvas for recording */}
           <canvas ref={canvasRef} className="hidden" />
 
-          {/* Stage (unchanged visual structure) */}
-          <div className="aspect-video w-full bg-white relative overflow-hidden p-6 md:p-10">
+          {/* Stage */}
+          <div ref={stageRef} className="aspect-video w-full bg-white relative overflow-hidden p-6 md:p-10">
             <div className={`grid h-full ${hasImage ? 'grid-cols-1 md:grid-cols-12 gap-6' : 'grid-cols-1'}`}>
               <div
                 className={hasImage ? 'md:col-span-7 h-full' : 'h-full'}
@@ -764,6 +789,7 @@ export default function LecturePlayer() {
 
               {hasImage && (
                 <div className="md:col-span-5 relative h-full">
+                  {/* Reserve top area for image, bottom area intentionally left for the persistent avatar video */}
                   <div className="absolute left-0 right-0 top-0 bottom-[calc(min(16rem,35vh)+1.25rem)] flex items-center justify-center">
                     <img
                       src={resolveAssetUrl(activeViz!.image_path!)}
@@ -771,75 +797,43 @@ export default function LecturePlayer() {
                       className="max-h-full max-w-full rounded-xl shadow-md border border-neutral-200 object-contain"
                     />
                   </div>
-
-                  {stableVideoSrc && (
-                    <div className="absolute left-0 right-0 bottom-0 h-[min(16rem,35vh)] rounded-xl shadow-lg border border-neutral-200 bg-white overflow-hidden">
-                      <video
-                        ref={videoRef}
-                        src={stableVideoSrc}
-                        {...(isCrossOrigin(stableVideoSrc) ? { crossOrigin: 'anonymous' as const } : {})}
-                        muted={isMuted}
-                        controls={false}
-                        loop
-                        playsInline
-                        preload="auto"
-                        onLoadedMetadata={handleLoadedMetadata}
-                        className="h-full w-full object-cover"
-                      >
-                        {lecture?.captions_url && (
-                          <track
-                            kind="subtitles"
-                            srcLang="en"
-                            label="English"
-                            src={resolveAssetUrl(lecture.captions_url)}
-                            default
-                          />
-                        )}
-                      </video>
-                      {isMuted && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 text-white text-xs">
-                          Muted
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!hasImage && stableVideoSrc && (
-                <div className="pointer-events-none">
-                  <div className="absolute right-6 bottom-6 h-[min(16rem,35vh)] w-[min(16rem,35vh)] rounded-xl shadow-lg border border-neutral-200 bg-white overflow-hidden">
-                    <video
-                      ref={videoRef}
-                      src={stableVideoSrc}
-                      {...(isCrossOrigin(stableVideoSrc) ? { crossOrigin: 'anonymous' as const } : {})}
-                      muted={isMuted}
-                      controls={false}
-                      loop
-                      playsInline
-                      preload="auto"
-                      onLoadedMetadata={handleLoadedMetadata}
-                      className="h-full w-full object-cover"
-                    >
-                      {lecture?.captions_url && (
-                        <track
-                          kind="subtitles"
-                          srcLang="en"
-                          label="English"
-                          src={resolveAssetUrl(lecture.captions_url)}
-                          default
-                        />
-                      )}
-                    </video>
-                    {isMuted && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 text-white text-xs">
-                        Muted
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
+
+            {/* ✅ Persistent avatar video — rendered once; consistent size; never unmounted */}
+            {stableVideoSrc && (
+              <div
+                className="absolute right-6 bottom-6 h-[min(16rem,35vh)] w-[min(16rem,35vh)] rounded-xl shadow-lg border border-neutral-200 bg-white overflow-hidden z-10"
+              >
+                <video
+                  ref={videoRef}
+                  src={stableVideoSrc}
+                  {...(isCrossOrigin(stableVideoSrc) ? { crossOrigin: 'anonymous' as const } : {})}
+                  muted={isMuted}
+                  controls={false}
+                  playsInline
+                  preload="auto"
+                  onLoadedMetadata={handleLoadedMetadata}
+                  className="h-full w-full object-cover"
+                >
+                  {lecture?.captions_url && (
+                    <track
+                      kind="subtitles"
+                      srcLang="en"
+                      label="English"
+                      src={resolveAssetUrl(lecture.captions_url)}
+                      default
+                    />
+                  )}
+                </video>
+                {isMuted && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 text-white text-xs">
+                    Muted
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </Card>
 

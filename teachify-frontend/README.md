@@ -23,7 +23,7 @@ A modern, professional frontend for the Teachify AI-powered lecture video genera
 ## 📋 Prerequisites
 
 - Node.js 16+ and npm
-- Your Teachify backend running (default: `http://localhost:8000`)
+- Teachify backend running (default: `http://localhost:8000`)
 
 ## 🏃 Getting Started
 
@@ -77,10 +77,12 @@ src/
 │   ├── Dashboard.tsx
 │   ├── GeneratePrompt.tsx
 │   ├── GenerateDocs.tsx
+│   ├── LecturePlayer.tsx
 │   ├── History.tsx
 │   ├── Profile.tsx
 │   ├── Billing.tsx
 │   ├── Pricing.tsx
+│   ├── NotFound.tsx
 │   ├── About.tsx
 │   ├── Privacy.tsx
 │   └── Terms.tsx
@@ -149,7 +151,7 @@ The Axios response interceptor automatically:
 ## 🐛 Troubleshooting
 
 ### CORS Issues
-Make sure your backend allows requests from your frontend origin in CORS configuration.
+Make sure backend allows requests from your frontend origin in CORS configuration.
 
 ### Token Issues
 If you're logged out unexpectedly, check:
@@ -169,4 +171,4 @@ This project is part of the Teachify platform.
 
 ## 🤝 Support
 
-For questions or issues, contact: support@teachify.ai
+For questions or issues, contact: fawad.khan.ai.developer@gmail.com
