@@ -33,11 +33,73 @@ from app.utils.validators import allowed_file_mime
 from app.utils.storage import save_upload_file
 from app.content.generator import generate_content_with_context
 
+from app.database.connection import get_db
+from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+
 
 logger = logging.getLogger("uvicorn")
 
 router = APIRouter(prefix="/v1", tags=["Lecture Generation"])
 ensure_dirs()  # create static dirs if missing
+
+class LectureHistoryItem(BaseModel):
+    id: str
+    topic: str
+    status: str
+    created_at: datetime
+    lecture: LectureOutput
+
+
+async def _persist_lecture(
+    db: AsyncIOMotorDatabase,
+    current_user: UserPublic,
+    lecture_output: LectureOutput,
+    *,
+    rag_used: bool,
+    source_files: Optional[List[str]] = None,
+) -> None:
+    """Best-effort insert of a lecture document for history view."""
+    if db is None:
+        return
+
+    try:
+        user = await db.users.find_one({"username": current_user.username})
+        if not user:
+            return
+
+        user_id = str(user.get("_id"))
+        now = datetime.utcnow()
+
+        record = {
+            "user_id": user_id,
+            "topic": lecture_output.topic,
+            "introduction": lecture_output.introduction,
+            "main_body": lecture_output.main_body,
+            "conclusion": lecture_output.conclusion,
+            "visuals": [
+                v.image_path
+                for v in (lecture_output.visualizations or [])
+                if v and getattr(v, "image_path", None)
+            ],
+            "avatar_video_url": lecture_output.video_path,
+            "rag_used": bool(rag_used),
+            "source_files": source_files or [],
+            "status": "ready",
+            "created_at": now,
+            "updated_at": now,
+            "meta": {
+                "lecture_output": lecture_output.model_dump(),
+                "captions_url": lecture_output.captions_url,
+                "source": "rag" if rag_used else "prompt",
+            },
+        }
+
+        await db.lectures.insert_one(record)
+    except Exception as e:  # history is non-critical
+        logger.error(f"❌ Failed to persist lecture history: {e}")
+
 
 
 @router.post(
@@ -49,6 +111,7 @@ ensure_dirs()  # create static dirs if missing
 async def generate_lecture(
     request: GenerationRequest,
     current_user: UserPublic = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """
     Lecture Generation Pipeline (updated):
@@ -130,15 +193,28 @@ async def generate_lecture(
     logger.info("⏭️ Skipping backend video compilation. Returning assets for frontend assembly.")
 
     # ✅ Return structured response with all materials
-    return LectureOutput(
+    # 5) Build response (no backend compilation)
+    lecture_output = LectureOutput(
         topic=content.topic,
         introduction=content.introduction,
         main_body=content.main_body,
         conclusion=content.conclusion,
         visualizations=content.visualizations,
-        video_path=result_url,  # avatar mp4 path returned for frontend use
+        video_path=result_url,  # direct Azure URL
         captions_url=captions_url,
     )
+
+    # 6) Persist in history (best-effort)
+    await _persist_lecture(
+        db=db,
+        current_user=current_user,
+        lecture_output=lecture_output,
+        rag_used=False,
+        source_files=[],
+    )
+
+    return lecture_output
+
 
 @router.post(
     "/content/generate-from-docs",
@@ -150,7 +226,9 @@ async def generate_lecture_from_docs(
     prompt: str = Form(..., min_length=10),
     files: List[UploadFile] = File(...),
     current_user: UserPublic = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
+
     """
     RAG-based generation:
     - Accepts PDF/DOCX/TXT
@@ -221,12 +299,94 @@ async def generate_lecture_from_docs(
         raise HTTPException(status_code=500, detail="Avatar synthesis failed.")
 
     # 5) Return (no backend compilation)
-    return LectureOutput(
+    lecture_output = LectureOutput(
         topic=content.topic,
         introduction=content.introduction,
         main_body=content.main_body,
         conclusion=content.conclusion,
         visualizations=content.visualizations,
-        video_path=result_url,  # direct Azure URL
+        video_path=result_url,
         captions_url=captions_url,
     )
+
+    await _persist_lecture(
+        db=db,
+        current_user=current_user,
+        lecture_output=lecture_output,
+        rag_used=True,
+        source_files=[path for (path, _mime) in saved],
+    )
+
+    return lecture_output
+
+
+@router.get(
+    "/content/history",
+    response_model=List[LectureHistoryItem],
+    status_code=status.HTTP_200_OK,
+    description="Return previous lectures for the authenticated user (most recent first).",
+)
+async def get_lecture_history(
+    limit: int = 20,
+    current_user: UserPublic = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    try:
+        user = await db.users.find_one({"username": current_user.username})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user_id = str(user.get("_id"))
+        per_page = max(1, min(limit, 100))
+
+        cursor = (
+            db.lectures.find({"user_id": user_id})
+            .sort("created_at", -1)
+            .limit(per_page)
+        )
+
+        items: List[LectureHistoryItem] = []
+        async for doc in cursor:
+            meta = doc.get("meta") or {}
+            lecture_data = meta.get("lecture_output")
+
+            # Fallback for very old docs with no meta
+            if not lecture_data:
+                main_body_value = doc.get("main_body") or ""
+                if isinstance(main_body_value, list):
+                    main_body_text = "\n\n".join(
+                        str(part.get("content", ""))
+                        for part in main_body_value
+                        if isinstance(part, dict)
+                    )
+                else:
+                    main_body_text = str(main_body_value)
+
+                lecture_data = {
+                    "topic": doc.get("topic", ""),
+                    "introduction": doc.get("introduction", ""),
+                    "main_body": main_body_text,
+                    "conclusion": doc.get("conclusion", ""),
+                    "visualizations": [],
+                    "video_path": doc.get("avatar_video_url") or "",
+                    "captions_url": meta.get("captions_url"),
+                }
+
+            lecture = LectureOutput(**lecture_data)
+
+            items.append(
+                LectureHistoryItem(
+                    id=str(doc.get("_id")),
+                    topic=doc.get("topic", lecture.topic),
+                    status=str(doc.get("status", "ready")),
+                    created_at=doc.get("created_at", datetime.utcnow()),
+                    lecture=lecture,
+                )
+            )
+
+        return items
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to load lecture history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load lecture history")

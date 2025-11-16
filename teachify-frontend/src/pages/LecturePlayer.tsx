@@ -1007,10 +1007,10 @@ export default function LecturePlayer() {
                 className={
                   hasImage
                     ? 'md:col-span-7 flex h-full min-h-0 flex-col'
-                    : 'flex h-full min-h-0 flex-col'
+                    : 'flex h-full min-h-0 flex-col md:pr-[22rem]'
                 }
-                style={!hasImage ? { paddingRight: '22rem' } : undefined}
               >
+
                 <h2 className="text-xl md:text-2xl font-semibold mb-4">
                   {SECTION_TITLES[currentSection]}
                 </h2>
@@ -1027,7 +1027,7 @@ export default function LecturePlayer() {
               {hasImage && (
                 <div className="md:col-span-5 relative h-full">
                   {/* Reserve top area for image, bottom area intentionally left for the persistent avatar video */}
-                  <div className="absolute left-0 right-0 top-0 bottom-[calc(min(16rem,35vh)+1.25rem)] flex items-center justify-center">
+                  <div className="absolute left-0 right-0 top-0 bottom-[9.25rem] md:bottom-[calc(min(16rem,35vh)+1.25rem)] flex items-center justify-center">
                     <img
                       src={resolveAssetUrl(activeViz!.image_path!)}
                       alt={activeViz!.prompt}
@@ -1041,10 +1041,11 @@ export default function LecturePlayer() {
             {/* ✅ Persistent avatar video — rendered once; consistent size; never unmounted */}
             {stableVideoSrc && (
               <div
-                className={`absolute right-6 bottom-6 h-[min(16rem,35vh)] w-[min(16rem,35vh)] rounded-2xl border border-neutral-200 bg-black/80 overflow-hidden z-20 transition-smooth shadow-[0_18px_40px_rgba(15,23,42,0.5)] ${
+                className={`absolute right-3 bottom-3 h-32 w-32 md:right-6 md:bottom-6 md:h-[min(16rem,35vh)] md:w-[min(16rem,35vh)] rounded-2xl border border-neutral-200 bg-black/80 overflow-hidden z-20 transition-smooth shadow-[0_18px_40px_rgba(15,23,42,0.5)] ${
                   isPlaying ? 'ring-2 ring-sky-400/80 shadow-[0_0_45px_rgba(56,189,248,0.75)]' : ''
                 }`}
               >
+
                 <video
                   ref={videoRef}
                   src={stableVideoSrc}

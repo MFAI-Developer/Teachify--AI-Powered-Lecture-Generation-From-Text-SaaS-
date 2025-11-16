@@ -1,8 +1,17 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { GraduationCap, Menu, X, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
+
 
 export const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
@@ -88,7 +97,7 @@ export const Navbar = () => {
             </div>
           </div>
 
-          {/* Right side: theme toggle + auth actions (desktop) */}
+          {/* Right side: theme toggle + account (desktop) */}
           <div className="hidden md:flex items-center gap-3">
             {/* Theme toggle */}
             <Button
@@ -110,12 +119,47 @@ export const Navbar = () => {
                 <Button variant="ghost" onClick={() => navigate('/dashboard')}>
                   Dashboard
                 </Button>
-                <Button variant="ghost" onClick={() => navigate('/profile')}>
-                  Profile
-                </Button>
-                <Button variant="ghost" onClick={handleLogout}>
-                  Sign Out
-                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-full border border-border/80 bg-background/80 shadow-sm hover:border-primary/70 hover:bg-background/90 transition-smooth h-9 w-9 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-background"
+                    >
+                      {user?.avatar_url ? (
+                        <img
+                          src={user.avatar_url}
+                          alt={user.username}
+                          className="h-full w-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs font-semibold text-primary">
+                          {user?.username?.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuLabel className="text-xs">
+                      Signed in as
+                      <div className="font-medium text-sm truncate">{user?.username}</div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => navigate('/profile')}
+                      className="cursor-pointer text-sm"
+                    >
+                      Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="cursor-pointer text-sm text-destructive focus:text-destructive"
+                    >
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             ) : (
               <>
@@ -126,6 +170,7 @@ export const Navbar = () => {
               </>
             )}
           </div>
+
 
           {/* Mobile Menu Button + theme toggle inline */}
           <div className="flex items-center gap-2 md:hidden">
@@ -143,8 +188,57 @@ export const Navbar = () => {
               )}
             </Button>
 
+            {isAuthenticated && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-border/80 bg-background/80 shadow-sm hover:border-primary/70 hover:bg-background/90 transition-smooth h-8 w-8 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-background"
+                  >
+                    {user?.avatar_url ? (
+                      <img
+                        src={user.avatar_url}
+                        alt={user.username}
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[11px] font-semibold text-primary">
+                        {user?.username?.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuLabel className="text-xs">
+                    Signed in as
+                    <div className="font-medium text-sm truncate">{user?.username}</div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      navigate('/profile');
+                    }}
+                    className="cursor-pointer text-sm"
+                  >
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="cursor-pointer text-sm text-destructive focus:text-destructive"
+                  >
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
             <button
-              className="inline-flex items-center justify-center rounded-full border border-border/70 bg-card/80 p-2 text-foreground shadow-sm transition-smooth hover:border-primary/70 hover:bg-background/80 md:hidden"
+              className="inline-flex items-center justify-center rounded-full border border-border/80 bg-background/80 p-2 text-muted-foreground transition-smooth hover:border-primary/70 hover:bg-background/80 md:hidden"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Toggle navigation menu"
             >
@@ -152,6 +246,7 @@ export const Navbar = () => {
             </button>
           </div>
         </div>
+
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
@@ -181,23 +276,12 @@ export const Navbar = () => {
                   <Button
                     variant="ghost"
                     className="justify-start"
-                    onClick={() => navigate('/dashboard')}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      navigate('/dashboard');
+                    }}
                   >
                     Dashboard
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="justify-start"
-                    onClick={() => navigate('/profile')}
-                  >
-                    Profile
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="justify-start"
-                    onClick={handleLogout}
-                  >
-                    Sign Out
                   </Button>
                 </>
               ) : (

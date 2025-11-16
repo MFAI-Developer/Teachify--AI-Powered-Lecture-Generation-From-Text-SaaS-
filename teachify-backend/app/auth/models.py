@@ -3,19 +3,22 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, EmailStr
 
+
 # ────────────────────────────────
 # AUTHENTICATION MODELS
 # ────────────────────────────────
+
 
 class UserCreate(BaseModel):
     """Schema for new user registration."""
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr = Field(..., description="User email (must be unique)")
     company: str = Field(default="", max_length=128)
-    password: str = Field(..., min_length=8, description="User password (will be hashed before saving).")
-
-
-
+    password: str = Field(
+        ...,
+        min_length=8,
+        description="User password (will be hashed before saving).",
+    )
 
 
 class UserInDB(BaseModel):
@@ -29,14 +32,33 @@ class UserInDB(BaseModel):
         orm_mode = True
 
 
+
 class UserPublic(BaseModel):
     """Public model for user responses (no password exposure)."""
     username: str
+    email: EmailStr
     company: str
+    avatar_url: Optional[str] = None
     created_at: datetime
 
     class Config:
         orm_mode = True
+
+class UserUpdate(BaseModel):
+    """Editable fields for the current user profile."""
+    email: Optional[EmailStr] = None
+    company: Optional[str] = Field(default=None, max_length=128)
+
+
+class AccountDeleteRequest(BaseModel):
+    """Payload for permanent account deletion."""
+    password: str = Field(..., min_length=8)
+    # Must equal "DELETE" for safety
+    confirm: str = Field(
+        ...,
+        description='Must be exactly "DELETE" to confirm account removal.',
+    )
+
 
 
 class Token(BaseModel):
@@ -49,6 +71,7 @@ class TokenData(BaseModel):
     """Decoded token data."""
     username: Optional[str] = None
     role: Optional[str] = None
+
 
 
 # ────────────────────────────────
